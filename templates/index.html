@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lark Data Fetcher - Processing Orders</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📦 Lark Data Fetcher</h1>
+            <p class="subtitle">Factory Status: Processing</p>
+        </header>
+
+        <!-- Controls Section -->
+        <section class="controls">
+            <div class="button-group">
+                <button id="fetchBtn" class="btn btn-primary">
+                    🔄 Fetch Data from Lark
+                </button>
+                <button id="saveBtn" class="btn btn-secondary" disabled>
+                    💾 Save to JSON
+                </button>
+                <button id="downloadAllBtn" class="btn btn-success" disabled>
+                    📥 Download All Attachments
+                </button>
+            </div>
+            <div id="lastFetch" class="last-fetch"></div>
+        </section>
+
+        <!-- Status/Loading Section -->
+        <section id="status" class="status hidden">
+            <div class="spinner"></div>
+            <span id="statusText">Loading...</span>
+        </section>
+
+        <!-- Stats Section -->
+        <section id="stats" class="stats hidden">
+            <div class="stat-card">
+                <span class="stat-value" id="recordCount">0</span>
+                <span class="stat-label">Records</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="orderCount">0</span>
+                <span class="stat-label">Orders</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="attachmentCount">0</span>
+                <span class="stat-label">Attachments</span>
+            </div>
+        </section>
+
+        <!-- Tabs -->
+        <section class="tabs">
+            <button class="tab-btn active" data-tab="orders">Orders</button>
+            <button class="tab-btn" data-tab="records">All Records</button>
+            <button class="tab-btn" data-tab="attachments">Attachments</button>
+        </section>
+
+        <!-- Tab Content -->
+        <section class="tab-content">
+            <!-- Orders Tab -->
+            <div id="orders-tab" class="tab-pane active">
+                <div id="ordersContainer" class="orders-container">
+                    <p class="empty-message">Click "Fetch Data from Lark" to load processing orders.</p>
+                </div>
+            </div>
+
+            <!-- Records Tab -->
+            <div id="records-tab" class="tab-pane hidden">
+                <div id="recordsContainer" class="records-container">
+                    <p class="empty-message">No records loaded.</p>
+                </div>
+            </div>
+
+            <!-- Attachments Tab -->
+            <div id="attachments-tab" class="tab-pane hidden">
+                <div class="attachment-controls">
+                    <button id="selectAllAttachments" class="btn btn-small" disabled>
+                        Select All
+                    </button>
+                    <button id="downloadSelectedBtn" class="btn btn-small btn-success" disabled>
+                        Download Selected
+                    </button>
+                </div>
+                <div id="attachmentsContainer" class="attachments-container">
+                    <p class="empty-message">No attachments found.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Messages -->
+        <section id="messages" class="messages"></section>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
