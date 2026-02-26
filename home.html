@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Lark Base Viewer</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #f6f7fb;
+            margin: 32px;
+            color: #1f2937;
+        }
+        h2 { margin-bottom: 16px; }
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 6px;
+            background: #2563eb;
+            color: #fff;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+        button:nth-child(2) { background: #111827; }
+        .result-wrapper {
+            margin-top: 24px;
+            max-height: 70vh;
+            overflow: auto;
+            border-radius: 12px;
+        }
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: #fff;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+        }
+        th, td {
+            padding: 10px 12px;
+            font-size: 13px;
+            vertical-align: top;
+        }
+        th {
+            background: #1f2937;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 11px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        tbody tr:nth-child(odd) { background: #f9fafb; }
+        tbody tr:hover { background: #e5f1ff; }
+        td {
+            border-top: 1px solid #e5e7eb;
+        }
+        .muted {
+            color: #9ca3af;
+            font-size: 12px;
+        }
+        .truncate {
+            display: block;
+            max-width: 240px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            background: #d1d5db;
+            color: #111827;
+        }
+        .badge-green { background: #16a34a; color: #fff; }
+        .badge-blue { background: #2563eb; color: #fff; }
+        .badge-yellow { background: #d97706; color: #fff; }
+    </style>
+</head>
+<body>
+    <h2>Xem dữ liệu từ Lark Base</h2>
+    <button onclick="loadData()">Lấy đơn</button>
+    <button onclick="processOrders()">Xử lý đơn</button>
+    <div class="result-wrapper">
+        <div id="result" class="json-table">Chưa có dữ liệu...</div>
+    </div>
+
+    <script>
+        const PRIORITY_COLUMNS = [
+            "order_id",
+            "status",
+            "shop_name",
+            "style",
+            "size",
+            "color",
+            "qty",
+            "custom",
+            "preview_url",
+            "label",
+            "batch_name",
+            "record_id"
+        ];
+
+        function renderTableFromJson(data) {
+            const container = document.getElementById("result");
+            if (!data) {
+                container.innerText = "No data";
+                return;
+            }
+
+            const items = Array.isArray(data) ? data : data.items;
+            if (!items || !items.length) {
+                container.innerText = "Không có record nào";
+                return;
+            }
+
+            const headerSet = items.reduce((set, record) => {
+                Object.keys(record || {}).forEach(key => set.add(key));
+                return set;
+            }, new Set());
+
+            const headers = [
+                ...PRIORITY_COLUMNS.filter(h => headerSet.has(h)),
+                ...Array.from(headerSet).filter(h => !PRIORITY_COLUMNS.includes(h))
+            ];
+
+            const table = document.createElement("table");
+            const thead = document.createElement("thead");
+            const headRow = document.createElement("tr");
+            headers.forEach(h => {
+                const th = document.createElement("th");
+                th.textContent = h;
+                headRow.appendChild(th);
+            });
+            thead.appendChild(headRow);
+            table.appendChild(thead);
+
+            const tbody = document.createElement("tbody");
+            items.forEach(record => {
+                const tr = document.createElement("tr");
+                headers.forEach(h => {
+                    const td = document.createElement("td");
+                    const value = record && record[h] !== undefined ? record[h] : "";
+                    td.innerHTML = formatCell(h, value, record);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            container.innerHTML = "";
+            container.appendChild(table);
+        }
+
+        function formatCell(header, value, record) {
+            if (!value) return '<span class="muted">—</span>';
+             if (header === "order_id") {
+                const rid = record?.record_id;
+                if (rid) {
+                    const link = `http://127.0.0.1:5000/api/update-status/${encodeURIComponent(rid)}?order_id=${encodeURIComponent(value)}`;
+                    return `<a href="${link}" target="_blank">${escapeHtml(String(value))}</a>`;
+                }
+            }
+            if (header === "status") {
+                const badgeClass =
+                    value === "Done" ? "badge badge-green" :
+                    value === "Processing" ? "badge badge-blue" :
+                    "badge badge-yellow";
+                return `<span class="${badgeClass}">${escapeHtml(String(value))}</span>`;
+            }
+
+            if (header === "preview_url") {
+                return `<a href="/templates/static/tmp/${escapeHtml(String(value))}" target="_blank">Preview</a>`;
+            }
+
+            if (/^https?:\/\//i.test(String(value))) {
+                return `<a href="${escapeHtml(String(value))}" target="_blank">${escapeHtml(String(value))}</a>`;
+            }
+
+            return `<span class="truncate" title="${escapeHtml(String(value))}">${escapeHtml(String(value))}</span>`;
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function loadData() {
+            const res = document.getElementById("result");
+            res.innerText = "Đang tải...";
+            fetch("/api/larkbase")
+                .then(r => {
+                    if (!r.ok) throw new Error("Network response was not ok");
+                    return r.json();
+                })
+                .then(data => renderTableFromJson(data))
+                .catch(err => res.innerText = "Lỗi: " + err.message);
+        }
+
+        function processOrders() {
+            const res = document.getElementById("result");
+            res.innerText = "Đang xử lý đơn...";
+            fetch("/api/process-orders", { method: "POST" })
+                .then(r => r.json())
+                .then(data => res.innerText = JSON.stringify(data, null, 2))
+                .catch(err => res.innerText = "Lỗi: " + err.message);
+        }
+    </script>
+    <script>
+        let scannedData = '';
+
+        // Làm sạch chuỗi: chỉ giữ ký tự ASCII
+        function sanitizeInput(input) {
+            return input.replace(/[^\x20-\x7E]/g, '');
+        }
+
+        // Kiểm tra URL hợp lệ
+        function isValidURL(str) {
+            try {
+                new URL(str);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const key = e.key;
+
+            // Bỏ qua các phím điều khiển
+            if (key.length > 1 && key !== 'Enter') return;
+
+            // Nếu là Enter → xử lý chuỗi
+            if (key === 'Enter') {
+                const cleanURL = sanitizeInput(scannedData);
+
+                if (isValidURL(cleanURL)) {
+                    window.location.href = cleanURL;
+                } else {
+                    console.warn('URL không hợp lệ:', cleanURL);
+                }
+
+                // Reset sau mỗi lần quét
+                scannedData = '';
+                return;
+            }
+
+            // Ghi nhận ký tự thường
+            scannedData += key;
+        });
+    </script>
+</body>
+</html>

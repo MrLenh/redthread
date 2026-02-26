@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Lark Base Viewer</title>
+    <style>
+        body {
+            font-family: Arial;
+            margin: 40px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            margin-top: 20px;
+            overflow: auto;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            font-size: 13px;
+            vertical-align: top;
+        }
+
+        th {
+            background: #fafafa;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }
+
+        .muted {
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>📋 Xem dữ liệu từ Lark Base</h2>
+    <button onclick="loadData()">Lấy Đơn</button>
+    <button onclick="processOrders()">Xử lý Đơn</button>
+    <div id="result" class="json-table">Chưa có dữ liệu...</div>
+
+    <script>
+        function formatFieldValue(v) {
+            if (v === null || v === undefined) return '';
+            if (Array.isArray(v)) {
+                // array of objects like [{text:"...", type:"text"}]
+                return v.map(item => {
+                    if (item === null || item === undefined) return '';
+                    if (typeof item === 'object') {
+                        if (item.text) return item.text;
+                        if (item.link) return item.link;
+                        return JSON.stringify(item);
+                    }
+                    return String(item);
+                }).join(', ');
+            }
+            if (typeof v === 'object') {
+                if (v.text) return v.text;
+                if (v.link) return v.link;
+                if (v.type && v.value) return Array.isArray(v.value) ? v.value.join(', ') : String(v.value);
+                return JSON.stringify(v);
+            }
+            return String(v);
+        }
+
+        function renderTableFromJson(data) {
+            if (!data) {
+                document.getElementById("result").innerText = 'No data';
+                return;
+            }
+
+            // If Lark response has items array use it, otherwise try to render object keys
+            const items = data.items || (Array.isArray(data) ? data : null);
+            if (!items) {
+                // render pretty JSON if structure unexpected
+                document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+                return;
+            }
+
+            // collect all field keys
+            const headersSet = new Set();
+            items.forEach(it => {
+                if (it.record_id) headersSet.add('record_id');
+                const fields = it.fields || {};
+                Object.keys(fields).forEach(k => headersSet.add(k));
+            });
+            const headers = Array.from(headersSet);
+
+            // build table
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            headers.forEach(h => {
+                const th = document.createElement('th');
+                th.textContent = h;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            items.forEach(it => {
+                const tr = document.createElement('tr');
+                headers.forEach(h => {
+                    const td = document.createElement('td');
+                    let val = '';
+                    if (h === 'record_id') {
+                        val = it.record_id || '';
+                    } else {
+                        const fields = it.fields || {};
+                        val = formatFieldValue(fields[h]);
+                    }
+                    td.innerHTML = val ? escapeHtml(val) : '<span class="muted">—</span>';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            const container = document.getElementById("result");
+            container.innerHTML = '';
+            container.appendChild(table);
+        }
+
+        // simple HTML escape
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function loadData() {
+            const res = document.getElementById("result");
+            res.innerText = "⏳ Đang tải...";
+            fetch("/api/larkbase")
+                .then(r => {
+                    if (!r.ok) throw new Error('Network response was not ok');
+                    return r.json();
+                })
+                .then(data => renderTableFromJson(data))
+                .catch(err => res.innerText = "❌ Lỗi: " + err.message);
+        }
+
+        function processOrders() {
+            document.getElementById("result").innerText = "⏳ Đang xử lý đơn...";
+            fetch("/api/process-orders", {
+                method: 'POST'
+            })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    document.getElementById("result").innerText = "❌ Lỗi: " + error.message;
+                });
+        }
+    </script>
+    <script>
+        let scannedData = '';
+
+        // Làm sạch chuỗi: chỉ giữ ký tự ASCII
+        function sanitizeInput(input) {
+            return input.replace(/[^\x20-\x7E]/g, '');
+        }
+
+        // Kiểm tra URL hợp lệ
+        function isValidURL(str) {
+            try {
+                new URL(str);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const key = e.key;
+
+            // Bỏ qua các phím điều khiển
+            if (key.length > 1 && key !== 'Enter') return;
+
+            // Nếu là Enter → xử lý chuỗi
+            if (key === 'Enter') {
+                const cleanURL = sanitizeInput(scannedData);
+
+                if (isValidURL(cleanURL)) {
+                    window.location.href = cleanURL;
+                } else {
+                    console.warn('URL không hợp lệ:', cleanURL);
+                }
+
+                // Reset sau mỗi lần quét
+                scannedData = '';
+                return;
+            }
+
+            // Ghi nhận ký tự thường
+            scannedData += key;
+        });
+    </script>
+</body>
+
+</html>

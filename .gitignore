@@ -1,0 +1,22 @@
+# Loại trừ file lớn và file không cần thiết
+*.pdf
+*.zip
+client_secret.json
+credentials.json
+order_data*.json
+processing.json
+templates.zip
+.vscode/
+batch1/
+m9/
+
+# Loại trừ file tạm
+*.tmp
+
+# Railway và Python
+__pycache__/
+.env
+
+# Loại trừ file hệ thống
+Thumbs.db
+desktop.ini
