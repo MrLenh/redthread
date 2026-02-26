@@ -31,7 +31,7 @@ import threading
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 SERVICE_ACCOUNT_FILE = 'credentials.json'  # file chứa thông tin xác thực
-ROLE_USER = 'WORKER'  # Vai trò người dùng trong Lark Base [WORKER, SHIPPER, ADMIN]
+ROLE_USER = 'SHIPPER'  # Vai trò người dùng trong Lark Base [WORKER, SHIPPER, ADMIN]
 status_flow = ["New", "Processing", "In-Production", "Done", "Shipped"]
 
 app = Flask(__name__, static_folder='templates/static')
@@ -47,8 +47,8 @@ drive_service = build('drive', 'v3', credentials=creds)
 #os.makedirs("qr_codes", exist_ok=True)
 
 # Thông tin app từ Lark Developer Console
-APP_ID = "cli_a9af963860399ed0"
-APP_SECRET = "aaAGHb9tinBBOhP6TCkzgbFrUZBCbCcS"
+APP_ID = "cli_a43d7cf7e478900a"
+APP_SECRET = "t1RUv1nEWQY83zbVj3TUShLALphOIB7x"
 BASE_ID = "AAL2bJHG7anPynsmOKJlJPNmgze"
 TABLE_ID = "tbldUgUoSqPBy77B"
 #user_token = 'u-d74Xx0BFJagUYqDDpWWzEG10n0HX40WrViGaqQS00ykS'  # Thay bằng token thực tế của bạn
@@ -81,10 +81,10 @@ def get_orders():
 
 # Hàm lấy access token
 def get_access_token(app_id, app_secret):
-    url = "https://open.larksuite.com/open-apis/auth/v3/app_access_token/internal"
+    url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
     payload = { "app_id": app_id, "app_secret": app_secret }
     res = requests.post(url, json=payload)
-    return res.json().get("app_access_token")
+    return res.json().get("tenant_access_token")
 
 # Hàm lấy dữ liệu bảng
 def get_table_data(base_id, table_id, token):
@@ -99,11 +99,11 @@ def get_table_data(base_id, table_id, token):
         .build()
     while has_more:
         # send request
+        #.user_id_type("user_id") \
+        #.page_token(page_token) \
         request: SearchAppTableRecordRequest = SearchAppTableRecordRequest.builder() \
             .app_token(BASE_ID) \
             .table_id(TABLE_ID) \
-            .user_id_type("user_id") \
-            .page_token(page_token) \
             .page_size(20) \
             .request_body(SearchAppTableRecordRequestBody.builder()
                 .filter(FilterInfo.builder()
@@ -192,7 +192,8 @@ def get_orders_records(record_id, order_id):
                         #print("✅[get_orders_records] Update Status:", record["record_id"])
                         record["status"] = "Done"
                 #print("✅[get_orders_records] record:", record)
-                if record["label"] != "" and record["mockup"] != "":
+                #if record["label"] != "" and record["mockup"] != "":
+                if record["label"] != '':
                     order_data.append(record)
         if order_data:
             with open("order_data.json", "w", encoding="utf-8") as f:
@@ -353,7 +354,7 @@ def create_qr_labels(orders):
     i=0
     for idx, order in enumerate(orders):
         if order.get("mockup") is not None:
-            get_lark_file_preview_url(order["mockup"], order["record_id"], order.get("shop_name"))
+            get_lark_file_preview_url(order["mockup"], order["record_id"], order["shop_name"])
         # Tạo QR code content với API endpoint
         api_url = f"http://localhost:5000/api/update-status/{order['record_id']}?order_id={order['order_id']}"
         print("✅[create_qr_labels] api_url:", api_url)
@@ -468,15 +469,14 @@ def extract_orders_from_json(json_data, preview = False):
     return orders
 
 def download_order_artworks(orders):
-    print("✅[download_order_artworks] orders:", orders)
     preview_url = ''
     for order in orders:
-        #print("✅[download_order_artworks] order:", order)
+        print("✅[download_order_artworks] order:", order)
         if order.get("mockup") is not None:
-            preview_url = get_lark_file_preview_url(order["mockup"],order.get("record_id"), order.get("shop_name"))
+            preview_url = get_lark_file_preview_url(order["mockup"],order.get("record_id"), order["shop_name"])
         else:
             preview_url = get_drive_preview_url(order.get("design_link"), order.get("record_id"))
-        #print("✅[download_order_artworks] preview_url:", preview_url)
+        print("✅[download_order_artworks] preview_url:", preview_url)
     return preview_url
     # Lưu PDF
     #os.makedirs(batchfilename, exist_ok=True)
@@ -501,27 +501,21 @@ def update_status_from_qr(record_id):
     try:
         order_id = request.args.get('order_id', '')
         recordData = get_orders_records(record_id, order_id)
-        #print("✅[update_status_from_qr] recordData : ", recordData)
+        print("✅[update_status_from_qr] recordData : ", recordData)
         label_pdf = recordData[0]['label']
-        #if isinstance(recordData, dict):
-            #order_data = recordData
-        #else:
-            #order_data = next((item for item in recordData if item["record_id"] == record_id), None)
+        if isinstance(recordData, dict):
+            order_data = recordData
+        else:
+            order_data = next((item for item in recordData if item["record_id"] == record_id), None)
         if os.path.exists(f"templates/static/tmp/{record_id}"):
             preview_url = record_id
         else:
-            order_data = getOrderID(order_id, record_id)
-            print("✅[update_status_from_qr] order_data : ", order_data)
-            preview_url = download_order_artworks(order_data) 
-        print("✅[Debug] preview_url ... 1", preview_url)
-
-        if not preview_url or "http" in str(preview_url):
-            preview_url = "not found"
+            preview_url = download_order_artworks([order_data]) 
 
         #threading.Thread(target=update_record_status, args=(record_id, "Done")).start()
         if request.method == 'GET':
             print("✅[Debug] get Order.html : ", order_id, recordData, record_id, label_pdf, preview_url, ROLE_USER)
-            return render_template("orders.html", order_id=order_id, records=recordData, active_record_id=record_id, design_link=str(preview_url), label_pdf=label_pdf, roles =ROLE_USER)
+            return render_template("orders.html", order_id=order_id, records=recordData, active_record_id=record_id, design_link=preview_url, label_pdf=label_pdf, roles =ROLE_USER)
         # POST -> JSON success
         #return jsonify({"status": "success", "message": f"Order data: {order_data}"})
         #return jsonify(recordData)
@@ -530,40 +524,22 @@ def update_status_from_qr(record_id):
     except Exception as e:
         lark.logger.error(f"Exception updating record {record_id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-    
-def get_lark_file_preview_url(file_token, record_id, shop_name):
-    if os.path.exists(f"templates/static/tmp/{record_id}"):
-        print("✅ File already exists locally:", record_id)
-        return record_id
-    #record_id = request.args.get("record_id")
-    print("✅[get_lark_file_preview_url] file_token:", file_token)
-    url = "https://open.larksuite.com/open-apis/drive/v1/medias/batch_get_tmp_download_url?file_tokens="+file_token
+ 
+def get_tmp_download_url_builder(file_token) :
+    time.sleep(0.5)
+    #url = "https://open.larksuite.com/open-apis/drive/v1/medias/batch_get_tmp_download_url?file_tokens="+file_token
     user_token = get_access_token(APP_ID, APP_SECRET)
     if not user_token:
         return jsonify({'success': False, 'error': 'Missing USER_ACCESS_TOKEN env var'}), 500
+    #khoi tao extra params
+    extra = json.dumps({
+        "bitablePerm": {
+            "tableId": "tbldUgUoSqPBy77B",
+            "rev": 5
+        }
+    })
+    print("✅[get_lark_file_preview_url] extra:", extra)
     # Khởi tạo client (enable_set_token để dùng user token)
-    if "PGS" in shop_name:
-        extra = json.dumps({
-            "bitablePerm": {
-                "tableId":"fld2tTAkFy",
-                "attachments": {
-                    "fldHg6m7TT": {
-                        record_id:[file_token]
-                    }
-                }
-            }
-        })
-    else :
-        extra = json.dumps({
-            "bitablePerm": {
-                "tableId":"tbldUgUoSqPBy77B",
-                "attachments": {
-                    "fldHg6m7TT": {
-                        record_id:[file_token]
-                    }
-                }
-            }
-        })
     client = lark.Client.builder() \
         .enable_set_token(True) \
         .log_level(lark.LogLevel.DEBUG) \
@@ -573,32 +549,43 @@ def get_lark_file_preview_url(file_token, record_id, shop_name):
         .file_tokens(file_token) \
         .extra(extra) \
         .build()
-        time.sleep(1)
+        time.sleep(0.5)
         option = lark.RequestOption.builder().user_access_token(user_token).build()
         response: BatchGetTmpDownloadUrlMediaResponse = client.drive.v1.media.batch_get_tmp_download_url(request, option)
         if not response.success():
             lark.logger.error(
                 f"client.drive.v1.media.batch_get_tmp_download_url failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}")
-            return
-        file_data = json.loads(lark.JSON.marshal(response.data, indent=4))
-        print("✅[get_lark_file_preview_url] file_data: 1", file_data)
-        tmp_download_url = file_data['tmp_download_urls'][0]['tmp_download_url']
-        folder = "templates/static/tmp"
-        os.makedirs(folder, exist_ok=True)
-        #file_name = file_token# + ".png"
-        filepath = os.path.join(folder, record_id)
-        dataResponse = requests.get(tmp_download_url)
-        print("✅[get_lark_file_preview_url] dataResponse:", dataResponse)
-        if dataResponse.status_code == 200:
-            with open(filepath, "wb") as f:
-                f.write(dataResponse.content)
-            print("✅[get_lark_file_preview_url] filepath:", filepath)
-            return record_id
-        else:
-            print("❌ Lỗi tải ảnh:", dataResponse.status_code)
             return None
+        file_data = json.loads(lark.JSON.marshal(response.data, indent=4))
+        return file_data
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def get_lark_file_preview_url(file_token, record_id, shop_name):
+    if os.path.exists(f"templates/static/tmp/{record_id}"):
+        print("✅ File already exists locally:", record_id)
+        return record_id
+    #record_id = request.args.get("record_id")
+    #time.sleep(0.1)
+    file_data = get_tmp_download_url_builder(file_token)
+    print("✅[get_lark_file_preview_url] file_data:", file_data)
+    if not file_data['tmp_download_urls']:
+        file_token = getOrderID(None, record_id)[0]['mockup']
+        file_data = get_tmp_download_url_builder(file_token)
+    tmp_download_url = file_data['tmp_download_urls'][0]['tmp_download_url']
+    folder = "templates/static/tmp"
+    os.makedirs(folder, exist_ok=True)
+    #file_name = file_token# + ".png"
+    filepath = os.path.join(folder, record_id)
+    dataResponse = requests.get(tmp_download_url)
+    if dataResponse.status_code == 200:
+        with open(filepath, "wb") as f:
+            f.write(dataResponse.content)
+        print("✅[Debug] filepath:", filepath)
+        return record_id
+    else:
+        print("❌ Lỗi tải ảnh:", dataResponse.status_code)
+        return None
 
 def list_png_files(folder_id):
     creds = service_account.Credentials.from_service_account_file(
@@ -649,10 +636,11 @@ def update_record_data_json(record_id, status):
     with open("order_data.json", "w", encoding="utf-8") as f:
             json.dump(local_data, f, ensure_ascii=False, indent=4)
 def update_record_status(record_id, status):
-    print("✅[update_record_status] record:", record_id, status)
+    #print("✅[update_record_status] record:", record_id, status)
     with app.app_context():
 
         record = getOrderID(None, record_id)
+        print("✅[update_record_status] record:", record)
         current_status = record[0]['status']
         if current_status == 'Shipped' :
             return None
@@ -907,3 +895,5 @@ def buy_label():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
